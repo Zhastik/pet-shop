@@ -1,10 +1,12 @@
 from decimal import Decimal
 from enum import unique
 
-from sqlalchemy import String, Boolean, Integer, Numeric, ForeignKey, Float, text
+from sqlalchemy import String, Boolean, Integer, Numeric, ForeignKey, Float, text, Computed, Index
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.orders import OrderItemModel
 
 
 class ProductModel(Base):
@@ -26,3 +28,23 @@ class ProductModel(Base):
 
     rating: Mapped[float] = mapped_column(Float, default=0.0, server_default=text('0'))
     reviews: Mapped[list["ReviewModel"]] = relationship("ReviewModel", back_populates="product")
+
+    cart_items: Mapped[list["CartItemModel"]] = relationship("CartItemModel", back_populates="product", cascade="all, delete-orphan")
+    order_items: Mapped[list["OrderItemModel"]] = relationship("OrderItemModel", back_populates="product")
+
+    tsv: Mapped[TSVECTOR] = mapped_column(
+        TSVECTOR,
+        Computed(
+            """
+            setweight(to_tsvector('english', coalesce(name, '')), 'A')
+            || 
+            setweight(to_tsvector('english', coalesce(description, '')), 'B')
+            """,
+            persisted=True,
+        ),
+        nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_products_tsv_gin", "tsv", postgresql_using="gin"),
+    )

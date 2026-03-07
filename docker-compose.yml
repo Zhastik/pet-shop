@@ -1,0 +1,22 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+
+    command: uvicorn app.main:app --host 0.0.0.0
+
+    ports:
+      - 8000:8000
+
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=ecommerce_user
+      - POSTGRES_PASSWORD=xxxxxxxx
+      - POSTGRES_DB=ecommerce_db
+
+volumes:
+  postgres_data:
