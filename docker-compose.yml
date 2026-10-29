@@ -1,22 +1,30 @@
 services:
   web:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
-
-    command: uvicorn app.main:app --host 0.0.0.0
-
+    build: .
     ports:
-      - 8000:8000
-
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ecommerce_user:xxxxxxxx@db:5432/ecommerce_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./media:/srv/store/media
+    restart: unless-stopped
   db:
     image: postgres:15
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
     environment:
-      - POSTGRES_USER=ecommerce_user
-      - POSTGRES_PASSWORD=xxxxxxxx
-      - POSTGRES_DB=ecommerce_db
-
+      POSTGRES_USER: ecommerce_user
+      POSTGRES_PASSWORD: xxxxxxxx
+      POSTGRES_DB: ecommerce_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecommerce_user -d ecommerce_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 volumes:
   postgres_data:

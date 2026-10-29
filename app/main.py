@@ -23,3 +23,6 @@ async def root():
     Корневой маршрут, подтверждающий, что API работает.
     """
     return {"message": "Добро пожаловать в API интернет-магазина!"}
+
+# Storefront: served from the same origin as the API.
+app.mount("/shop", StaticFiles(directory="frontend", html=True), name="shop")

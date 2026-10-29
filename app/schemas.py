@@ -102,7 +102,7 @@ class ProductRequest(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr = Field(description="Email пользователя")
     password: str = Field(..., min_length = 8, description="Пароль пользователя, минимум 8 символов ")
-    role: str = Field(default="buyer", pattern="^(buyer|seller|admin)$", description="Роль: 'buyer' или 'seller'")
+    role: str = Field(default="buyer", pattern="^(buyer|seller)$", description="Роль: 'buyer' или 'seller'")
 
 class UserSchema(BaseModel):
     id: int = Field(..., description="Уникальный идентификатор пользователя")
@@ -154,7 +154,7 @@ class CartSchema(BaseModel):
     user_id: int = Field(..., description="ID пользователя")
     items: list[CartItemSchema] = Field(default_factory=list, description="Содержимое корзины")
     total_quantity: int = Field(..., ge=0, description="Общее количество товаров")
-    total_price: int = Field(..., ge=0, description="Общая стоимость товаров")
+    total_price: Decimal = Field(..., ge=0, description="Общая стоимость товаров")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -172,7 +172,7 @@ class OrderSchema(BaseModel):
     id: int = Field(..., description="ID заказа")
     user_id: int = Field(..., description="ID пользователя")
     status: str = Field(..., description="Текущий статус заказа")
-    total_amount: int = Field(..., ge=0, description="Общая стоимость")
+    total_amount: Decimal = Field(..., ge=0, description="Общая стоимость")
     created_at: datetime = Field(..., description="Когда заказ был создан")
     update_at: datetime = Field(..., description="Когда последний раз обновлялся")
     items: list[OrderItemSchema] = Field(default_factory=list, description="Список позиций")

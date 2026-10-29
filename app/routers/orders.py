@@ -1,5 +1,4 @@
 from decimal import Decimal
-from itertools import product
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
@@ -80,7 +79,7 @@ async def checkout_order(
     order.total_amount = total_amout
     db.add(order)
 
-    await db.execute(delete(CartItemModel).where(CartItemModel.id == current_user.id))
+    await db.execute(delete(CartItemModel).where(CartItemModel.user_id == current_user.id))
     await db.commit()
 
     created_order = await _load_order_with_items(order.id, db)
@@ -94,7 +93,7 @@ async def checkout_order(
 @router.get('/', response_model=OrderListSchema)
 async def list_orders(
         page: int = Query(1, ge=1),
-        page_size: int = Query(10, ge=10, le=100),
+        page_size: int = Query(10, ge=1, le=100),
         current_user: UserModel = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_db)
 ):

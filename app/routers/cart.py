@@ -1,16 +1,12 @@
 from decimal import Decimal
-from statistics import quantiles
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from fastapi.dependencies.models import Dependant
-from fastapi.params import Depends
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth import get_current_user
 from app.db_depends import get_async_db
-from app.migrations.versions.eab3ddef562d_base_schema import depends_on
 from app.models.cart_items import CartItemModel
 from app.models.products import ProductModel
 from app.models.users import UserModel
@@ -56,7 +52,7 @@ async def get_cart(
     total_quantity = sum(item.quantity for item in items)
 
     price_items = (
-        Decimal(total_quantity) * (item.product.price if item.product.price is not None else Decimal("0"))
+        Decimal(item.quantity) * (item.product.price if item.product.price is not None else Decimal("0"))
         for item in items
     )
 
