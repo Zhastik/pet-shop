@@ -1,25 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from app.services.audit import audit
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from starlette.status import HTTP_404_NOT_FOUND
 
 from app.models.products import ProductModel
-from app.models.categories import CategoryModel
 from app.models.reviews import ReviewModel
-from app.routers.products import update_product_rating
+from app.services.ratings import update_product_rating
 from app.schemas import ReviewSchema, ReviewCreate
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.users import UserModel
-from app.auth import get_current_seller, get_current_buyer, get_current_admin
+from app.auth import get_current_buyer, get_current_admin
 
 from app.db_depends import get_async_db
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 @router.get("/", response_model=list[ReviewSchema])
-async def get_all_reviews(db: AsyncSession = Depends(get_async_db)):
+async def get_all_reviews(db: AsyncSession = Depends(get_async_db), page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
     reviews = await db.scalars(
-        select(ReviewModel).where(ReviewModel.is_active == True)
+        select(ReviewModel).where(ReviewModel.is_active == True).order_by(ReviewModel.id).offset((page-1)*page_size).limit(page_size)
     )
     res_review = reviews.all()
     return res_review
@@ -43,8 +44,8 @@ async def create_review(
         db: AsyncSession = Depends(get_async_db),
         current_user: UserModel = Depends(get_current_buyer)
 ):
-    product = db.scalar(
-        select(ProductModel).where(ProductModel.id == review.product_id, ProductModel.is_active == True)
+    product = await db.scalar(
+        select(ProductModel).where(ProductModel.id == review.product_id, ProductModel.is_active == True).with_for_update()
     )
     if not product:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category not found or inactive")
@@ -53,13 +54,16 @@ async def create_review(
     try:
         db.add(db_review)
         await db.flush()
-    except:
+    except IntegrityError:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Вы уже оставляли отзыв на этот товар"
         )
 
     await update_product_rating(db, review.product_id)
+    await db.flush()
+    await audit(db, current_user.id, 'review.created', db_review.id)
     await db.commit()
     await db.refresh(db_review)
     return db_review
@@ -90,5 +94,7 @@ async def delete_review(
     await db.flush()
     await update_product_rating(db, res_review.product_id)
 
+    await db.flush()
+    await audit(db, current_user.id, 'review.deleted', review_id)
     await db.commit()
     return res_review

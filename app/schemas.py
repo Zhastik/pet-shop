@@ -1,7 +1,10 @@
+from typing import Literal
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from datetime import datetime
 
 from fastapi import Form
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 from decimal import Decimal
 
 from typing import Annotated
@@ -28,6 +31,29 @@ class CategorySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class GlassesSpecs(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    brand: str | None = Field(None, max_length=80)
+    model: str | None = Field(None, max_length=80)
+    sku: str | None = Field(None, max_length=80)
+    purpose: str | None = Field(None, max_length=100)
+    frame_shape: str | None = Field(None, max_length=80)
+    frame_material: str | None = Field(None, max_length=80)
+    frame_color: str | None = Field(None, max_length=80)
+    lens_material: str | None = Field(None, max_length=80)
+    lens_color: str | None = Field(None, max_length=80)
+    lens_width_mm: int | None = Field(None, ge=20, le=90)
+    bridge_width_mm: int | None = Field(None, ge=5, le=40)
+    temple_length_mm: int | None = Field(None, ge=80, le=180)
+    weight_g: float | None = Field(None, gt=0, le=200)
+    polarized: bool | None = None
+    uv_protection: str | None = Field(None, max_length=80)
+    prescription_ready: bool | None = None
+    included: str | None = Field(None, max_length=300)
+    care: str | None = Field(None, max_length=500)
+    demo: bool = False
+
+
 class ProductCreate(BaseModel):
     """
     Модель для создания и обновления товара. Используется в POST и PUT запросах.
@@ -40,6 +66,8 @@ class ProductCreate(BaseModel):
     stock: int = Field(..., ge=0, description="Количество товара на складе (0 или больше)")
     category_id: int = Field(..., description="ID категории, к которой относится товар")
 
+    specifications: GlassesSpecs = Field(default_factory=GlassesSpecs)
+
     @classmethod
     def as_form(cls,
                 name: Annotated[str, Form(...)],
@@ -47,14 +75,24 @@ class ProductCreate(BaseModel):
                 stock: Annotated[int, Form(...)],
                 category_id: Annotated[int, Form(...)],
                 description: Annotated[str | None, Form()] = None,
+                specifications: Annotated[str, Form()] = "{}",
                 ) -> "ProductCreate":
-        return cls(
-            name=name,
-            description=description,
-            price=price,
-            stock=stock,
-            category_id=category_id,
-        )
+        try:
+            parsed_specs = GlassesSpecs.model_validate_json(specifications)
+        except ValidationError:
+            raise RequestValidationError([{'loc': ['body', 'specifications'], 'msg': 'Invalid specifications', 'type': 'value_error'}])
+        try:
+            return cls(
+                specifications=parsed_specs,
+                name=name,
+                description=description,
+                price=price,
+                stock=stock,
+                category_id=category_id,
+            )
+        except ValidationError:
+            raise RequestValidationError([{'loc': ['body'], 'msg': 'Invalid product data', 'type': 'value_error'}])
+
 
 
 
@@ -66,6 +104,7 @@ class ProductSchema(BaseModel):
     name: str = Field(..., description="Название товара")
     description: str | None = Field(None, description="Описание товара")
     price: Decimal = Field(..., description="Цена товара в рублях", gt=0, decimal_places=2)
+    specifications: GlassesSpecs = Field(default_factory=GlassesSpecs)
     image_url: str | None = Field(None, description="URL изображения товара")
     stock: int = Field(..., description="Количество товара на складе")
     category_id: int = Field(..., description="ID категории")
@@ -102,7 +141,14 @@ class ProductRequest(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr = Field(description="Email пользователя")
     password: str = Field(..., min_length = 8, description="Пароль пользователя, минимум 8 символов ")
-    role: str = Field(default="buyer", pattern="^(buyer|seller)$", description="Роль: 'buyer' или 'seller'")
+    role: str = Field(default="buyer", pattern="^buyer$", description="Регистрация покупателя")
+
+    @field_validator('password')
+    @classmethod
+    def password_byte_limit(cls, value: str) -> str:
+        if len(value.encode('utf-8')) > 72:
+            raise ValueError('Password must not exceed 72 UTF-8 bytes')
+        return value
 
 class UserSchema(BaseModel):
     id: int = Field(..., description="Уникальный идентификатор пользователя")
@@ -187,3 +233,7 @@ class OrderListSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+
+class UserRoleUpdate(BaseModel):
+    role: Literal['buyer', 'staff']

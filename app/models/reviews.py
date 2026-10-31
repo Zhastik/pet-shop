@@ -1,8 +1,6 @@
 from datetime import datetime
-from decimal import Decimal
-from enum import unique
 
-from sqlalchemy import String, Boolean, Integer, Numeric, ForeignKey, Text, DateTime, UniqueConstraint
+from sqlalchemy import CheckConstraint, Boolean, Integer, ForeignKey, Text, DateTime, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.database import Base
@@ -29,5 +27,6 @@ class ReviewModel(Base):
         return value
 
     __table_args__ = (
+        CheckConstraint("grade BETWEEN 1 AND 5", name="ck_review_grade"),
         UniqueConstraint('user_id', 'product_id'),
     )

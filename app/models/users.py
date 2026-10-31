@@ -1,6 +1,5 @@
-from decimal import Decimal
 
-from sqlalchemy import String, Boolean, Integer, Numeric, ForeignKey
+from sqlalchemy import CheckConstraint, String, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -9,6 +8,7 @@ from app.models.orders import OrderModel
 
 class UserModel(Base):
     __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('buyer','staff','admin')", name="ck_users_role"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key= True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)

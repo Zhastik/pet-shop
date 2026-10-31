@@ -1,22 +1,66 @@
 services:
   web:
-    build: .
+    image: forma-web:local
+    pull_policy: never
     ports:
       - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://ecommerce_user:xxxxxxxx@db:5432/ecommerce_db
+    environment: &app_environment
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      ALLOWED_HOSTS: '${ALLOWED_HOSTS:-["localhost","127.0.0.1","testserver","web"]}'
+      RATE_LIMIT_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      SEED_CATALOG: ${SEED_CATALOG:-true}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
       db:
         condition: service_healthy
     volumes:
       - ./media:/srv/store/media
     restart: unless-stopped
+  migrate:
+    image: forma-web:local
+    build: .
+    command: ["sh", "-c", "alembic upgrade head && python -m app.bootstrap"]
+    environment: *app_environment
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./media:/srv/store/media
+    restart: "no"
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
   db:
     image: postgres:15
     environment:
       POSTGRES_USER: ecommerce_user
-      POSTGRES_PASSWORD: xxxxxxxx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ecommerce_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -27,4 +71,5 @@ services:
       retries: 20
     restart: unless-stopped
 volumes:
+  redis_data:
   postgres_data:

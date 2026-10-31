@@ -1,8 +1,7 @@
 from decimal import Decimal
-from enum import unique
 
-from sqlalchemy import String, Boolean, Integer, Numeric, ForeignKey, Float, text, Computed, Index
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy import CheckConstraint, String, Boolean, Integer, Numeric, ForeignKey, Float, text, Computed, Index
+from sqlalchemy.dialects.postgresql import TSVECTOR, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -17,6 +16,7 @@ class ProductModel(Base):
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(10, 2) )
     image_url: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    specifications: Mapped[dict] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"), nullable=False)
     stock: Mapped[int] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -46,5 +46,7 @@ class ProductModel(Base):
     )
 
     __table_args__ = (
+        CheckConstraint("stock >= 0", name="ck_products_stock"),
+        CheckConstraint("price > 0", name="ck_products_price"),
         Index("ix_products_tsv_gin", "tsv", postgresql_using="gin"),
     )

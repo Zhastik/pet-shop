@@ -1,6 +1,8 @@
+from app.services.audit import audit
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
+from app.models.products import ProductModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -27,6 +29,7 @@ async def _load_order_with_items(order_id: int, db: AsyncSession) -> OrderModel:
 
 @router.post("/checkout", response_model=OrderSchema, status_code=status.HTTP_201_CREATED)
 async def checkout_order(
+        idempotency_key: str | None = Header(None, max_length=128),
         current_user: UserModel = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_db)
 ):
@@ -34,6 +37,13 @@ async def checkout_order(
         Создаёт заказ на основе текущей корзины пользователя.
         Сохраняет позиции заказа, вычитает остатки и очищает корзину.
     """
+    # Serialize checkout for a user, including duplicate requests.
+    await db.scalar(select(UserModel).where(UserModel.id == current_user.id).with_for_update())
+    if idempotency_key:
+        existing = await db.scalar(select(OrderModel).where(
+            OrderModel.user_id == current_user.id, OrderModel.idempotency_key == idempotency_key))
+        if existing:
+            return await _load_order_with_items(existing.id, db)
     cart_result = await db.scalars(
         select(CartItemModel).options(selectinload(CartItemModel.product))
         .where(CartItemModel.user_id == current_user.id).order_by(CartItemModel.id)
@@ -42,11 +52,15 @@ async def checkout_order(
     if not cart_items:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    order = OrderModel(user_id = current_user.id)
+    product_ids = sorted({item.product_id for item in cart_items})
+    locked = (await db.scalars(select(ProductModel).where(ProductModel.id.in_(product_ids))
+              .order_by(ProductModel.id).with_for_update().execution_options(populate_existing=True))).all()
+    products = {product.id: product for product in locked}
+    order = OrderModel(user_id=current_user.id, idempotency_key=idempotency_key)
     total_amout = Decimal("0")
 
     for cart_item in cart_items:
-        product = cart_item.product
+        product = products.get(cart_item.product_id)
         if not product or not product.is_active:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -79,7 +93,9 @@ async def checkout_order(
     order.total_amount = total_amout
     db.add(order)
 
-    await db.execute(delete(CartItemModel).where(CartItemModel.user_id == current_user.id))
+    await db.execute(delete(CartItemModel).where(CartItemModel.id.in_([item.id for item in cart_items])))
+    await db.flush()
+    await audit(db, current_user.id, 'order.created', order.id)
     await db.commit()
 
     created_order = await _load_order_with_items(order.id, db)

@@ -1,3 +1,4 @@
+from app.auth import get_current_admin
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,7 @@ async def get_all_categories(db: AsyncSession = Depends(get_async_db)):
     return categories
 
 
-@router.post("/", response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
+@router.post("/", dependencies=[Depends(get_current_admin)], response_model=CategorySchema, status_code=status.HTTP_201_CREATED)
 async def create_category(category: CategoryCreate, db: AsyncSession = Depends(get_async_db)):
     if category.parent_id is not None:
         stmt = select(CategoryModel).where(CategoryModel.id == category.parent_id,
@@ -35,7 +36,7 @@ async def create_category(category: CategoryCreate, db: AsyncSession = Depends(g
     await db.commit()
     return db_category
 
-@router.delete("/{category_id}", status_code=status.HTTP_200_OK)
+@router.delete("/{category_id}", dependencies=[Depends(get_current_admin)], status_code=status.HTTP_200_OK)
 async def delete_category(category_id: int, db: AsyncSession=Depends(get_async_db)):
     stmt = select(CategoryModel).where(CategoryModel.id == category_id, CategoryModel.is_active == True)
     res_categories = await db.scalars(stmt)
@@ -48,7 +49,7 @@ async def delete_category(category_id: int, db: AsyncSession=Depends(get_async_d
 
     return {"status": "success", "message": "CategoryModel marked as inactive"}
 
-@router.put("/{category_id}", response_model=CategorySchema)
+@router.put("/{category_id}", dependencies=[Depends(get_current_admin)], response_model=CategorySchema)
 async def update_category(category_id: int, category: CategoryCreate, db: AsyncSession=Depends(get_async_db)):
     stmt = select(CategoryModel).where(CategoryModel.id == category_id, CategoryModel.is_active == True)
     res_categories = await db.scalars(stmt)

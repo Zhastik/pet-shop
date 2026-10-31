@@ -1,7 +1,9 @@
+from sqlalchemy.dialects.postgresql import insert
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import delete, select
+from app.models.users import UserModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -9,7 +11,6 @@ from app.auth import get_current_user
 from app.db_depends import get_async_db
 from app.models.cart_items import CartItemModel
 from app.models.products import ProductModel
-from app.models.users import UserModel
 from app.schemas import (
     CartSchema,
     CartItemSchema,
@@ -71,18 +72,15 @@ async def add_item_to_cart(
         current_user: UserModel = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_db)
 ):
+
+    await db.scalar(select(UserModel).where(UserModel.id == current_user.id).with_for_update())
     await _ensure_product_available(payload.product_id, db)
 
-    cart_item = await _get_cart_item(current_user.id, payload.product_id, db)
-    if cart_item:
-        cart_item.quantity += payload.quantity
-    else:
-        cart_item = CartItemModel(
-            user_id = current_user.id,
-            product_id = payload.product_id,
-            quantity = payload.quantity
-        )
-        db.add(cart_item)
+    statement = insert(CartItemModel).values(user_id=current_user.id,
+        product_id=payload.product_id, quantity=payload.quantity)
+    await db.execute(statement.on_conflict_do_update(
+        constraint='uq_cart_items_user_product',
+        set_={'quantity': CartItemModel.quantity + payload.quantity}))
 
     await db.commit()
     updated_item = await _get_cart_item(current_user.id, payload.product_id, db)
@@ -95,6 +93,8 @@ async def update_cart_item(
         current_user: UserModel = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_db)
 ):
+
+    await db.scalar(select(UserModel).where(UserModel.id == current_user.id).with_for_update())
     await _ensure_product_available(product_id, db)
     cart_item = await _get_cart_item(current_user.id, product_id, db)
     if not cart_item:
@@ -112,6 +112,8 @@ async def delete_item_from_cart(
         current_user: UserModel = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_db)
 ):
+
+    await db.scalar(select(UserModel).where(UserModel.id == current_user.id).with_for_update())
     cart_item = await _get_cart_item(current_user.id, product_id, db)
     if not cart_item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cart item not found")
@@ -125,6 +127,8 @@ async def clear_cart(
         current_user: UserModel = Depends(get_current_user),
         db: AsyncSession = Depends(get_async_db)
 ):
+
+    await db.scalar(select(UserModel).where(UserModel.id == current_user.id).with_for_update())
     await db.execute(delete(CartItemModel).where(CartItemModel.user_id == current_user.id))
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

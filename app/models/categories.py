@@ -1,6 +1,5 @@
 from sqlalchemy import Integer, String, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from unicodedata import category
 
 from app.database import Base
 

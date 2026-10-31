@@ -5,3 +5,9 @@
 **/__pycache__
 *.db
 tests
+.ruff_cache
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov
+backups

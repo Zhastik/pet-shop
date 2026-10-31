@@ -2,7 +2,7 @@ import asyncio
 import secrets
 from decimal import Decimal
 from sqlalchemy import select
-from app import models
+from app import models  # noqa: F401 -- register ORM models
 from app.database import async_session_maker, async_engine
 from app.auth import hash_password
 from app.models.users import UserModel
@@ -19,12 +19,32 @@ async def seed():
         async with db.begin():
             seller = await db.scalar(select(UserModel).where(UserModel.email == 'catalog@forma.example'))
             if seller is None:
-                seller = UserModel(email='catalog@forma.example', role='seller', is_active=False,
+                seller = UserModel(email='catalog@forma.example', role='buyer', is_active=False,
                                    hashed_password=hash_password(secrets.token_urlsafe(32)))
                 db.add(seller)
                 await db.flush()
             for name, category_name, price, stock, description, image in CATALOG:
-                if await db.scalar(select(ProductModel.id).where(ProductModel.name == name)):
+                existing = await db.scalar(select(ProductModel).where(ProductModel.name == name))
+                specs = {
+                    'brand': 'FORMA', 'model': name.replace('FORMA ', ''),
+                    'sku': 'SM-' + image.replace('.svg', '').upper(),
+                    'purpose': category_name, 'frame_shape': 'Округлая',
+                    'frame_material': 'Ацетат', 'frame_color': 'По изображению модели',
+                    'lens_color': 'Прозрачные' if category_name == 'Оправы для зрения' else 'Дымчатые',
+                    'lens_width_mm': 50 if category_name == 'Детские очки' else 54,
+                    'bridge_width_mm': 18, 'temple_length_mm': 140,
+                    'prescription_ready': category_name == 'Оправы для зрения',
+                    'included': 'Очки, футляр, салфетка',
+                    'care': 'Очищайте мягкой салфеткой. Храните в футляре. Избегайте высоких температур.',
+                    'demo': True,
+                }
+                if 'Aviator' in name or 'Line' in name:
+                    specs.update(frame_material='Металл', frame_shape='Авиатор' if 'Aviator' in name else 'Прямоугольная')
+                if 'Rose' in name:
+                    specs['frame_shape'] = 'Кошачий глаз'
+                if existing:
+                    if not existing.specifications:
+                        existing.specifications = specs
                     continue
                 category = await db.scalar(select(CategoryModel).where(CategoryModel.name == category_name))
                 if category is None:
@@ -33,7 +53,7 @@ async def seed():
                     await db.flush()
                 db.add(ProductModel(name=name, description=description, price=Decimal(price),
                                     stock=stock, category_id=category.id, seller_id=seller.id,
-                                    image_url='/shop/' + image))
+                                    image_url='/shop/' + image, specifications=specs))
     print('Starter catalog ready')
 
 
